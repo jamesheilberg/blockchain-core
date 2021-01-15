@@ -212,7 +212,7 @@
          cf :: atom(),
          predicate :: undefined | fun(),
          hook_fun :: fun(),
-         ref :: reference()
+         ref :: undefined | reference()
         }).
 
 -record(ledger_v1, {
