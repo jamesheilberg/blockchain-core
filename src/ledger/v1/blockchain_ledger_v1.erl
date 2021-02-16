@@ -23,7 +23,7 @@
     consensus_members/1, consensus_members/2,
     election_height/1, election_height/2,
     election_epoch/1, election_epoch/2,
-    process_delayed_txns/3,
+    process_delayed_actions/3,
 
     active_gateways/1, snapshot_gateways/1, load_gateways/2,
     entries/1,
@@ -135,12 +135,15 @@
 
     add_validator/5,
     get_validator/2,
+    activate_validator/2,
     deactivate_validator/2,
     update_validator/3,
 
     delay_stake/4,
-    %% cancel_stake_delay/3,
+    cancel_delay_stake/2,
+    cooldown_stake/2,
 
+    circulating_hnt/1,
     staked_hnt/1,
     cooldown_hnt/1,
 
@@ -737,7 +740,7 @@ election_epoch(Epoch, Ledger) ->
     DefaultCF = default_cf(Ledger),
     cache_put(Ledger, DefaultCF, ?ELECTION_EPOCH, Bin).
 
-process_delayed_txns(Block, Ledger, Chain) ->
+process_delayed_actions(Block, Ledger, Chain) ->
     DefaultCF = default_cf(Ledger),
     ok = process_threshold_txns(DefaultCF, Ledger, Chain),
     PendingTxns =
@@ -1265,7 +1268,7 @@ add_gateway_location(GatewayAddress, Location, Nonce, Ledger) ->
 
 cg_versions(Ledger) ->
     case config(?election_version, Ledger) of
-        N when N >= 5 ->
+        {ok, N} when N >= 5 ->
             validator_versions(Ledger);
         _ ->
             gateway_versions(Ledger)
@@ -3515,6 +3518,26 @@ deactivate_validator(Address, Ledger) ->
         Error -> Error
     end.
             
+-spec activate_validator(libp2p_crypto:pubkey_bin(), ledger()) ->
+          ok | {error, any()}.
+activate_validator(Address, Ledger) ->
+    case get_validator(Address, Ledger) of
+        {ok, Val} ->
+            Nonce = blockchain_ledger_validator_v1:nonce(Val),
+            {ok, CooldownStake} = cooldown_stake(Val, Ledger),
+
+            %% set status to unstaked
+            Val1 = blockchain_ledger_validator_v1:status(staked, Val),
+            %% increment the nonce
+            Val2 = blockchain_ledger_validator_v1:nonce(Nonce + 1, Val1),
+            %% 0 the stake
+            Val3 = blockchain_ledger_validator_v1:stake(CooldownStake, Val2),
+            %% put the stake HNT into cooldown
+            ok = cancel_delay_stake(Val3, Ledger),
+            update_validator(Address, Val3, Ledger);
+        Error -> Error
+    end.
+
 delay_stake(Owner, Validator, Stake, Ledger) ->
     DefaultCF = default_cf(Ledger),
     {ok, Height} = current_height(Ledger),
@@ -3531,6 +3554,7 @@ delay_stake(Owner, Validator, Stake, Ledger) ->
             %% just gonna function clause for now
         end,
     OwnerEntry1 = OwnerEntry ++ [{Validator, Stake, TargetBlock}],
+    lager:info("storing ~p", [OwnerEntry1]),
     cache_put(Ledger, DefaultCF, owner_name(Owner),
               term_to_binary(OwnerEntry1)),
     %% make an entry for the return with {owner, validator, stake} at height
@@ -3545,6 +3569,75 @@ delay_stake(Owner, Validator, Stake, Ledger) ->
     HeightEntry1 = HeightEntry ++ [{Owner, Validator, Stake}],
     cache_put(Ledger, DefaultCF, cd_block_name(TargetBlock),
               term_to_binary(HeightEntry1)).
+
+cancel_delay_stake(Val, Ledger) ->
+    Address = blockchain_ledger_validator_v1:address(Val),
+    Owner = blockchain_ledger_validator_v1:owner_address(Val),
+
+    CF = default_cf(Ledger),
+    case cache_get(Ledger, CF, owner_name(Owner), []) of
+        {ok, OE} ->
+            Entries = binary_to_term(OE),
+            case lists:filter(fun({A, _S, _T}) ->
+                                      A == Address
+                              end, Entries) of
+                [] -> {error, not_found};
+                [{_, Stake, Target} = Entry] ->
+                    case lists:delete(Entry, Entries) of
+                        [] -> cache_delete(Ledger, CF, owner_name(Owner));
+                        Entries1 ->
+                            cache_put(Ledger, CF, owner_name(Owner),
+                                      term_to_binary(Entries1))
+                    end,
+                    case cache_get(Ledger, CF, cd_block_name(Target), []) of
+                        {ok, HE} ->
+                            HeightEntry = binary_to_term(HE),
+                            case lists:delete({Owner, Address, Stake}, HeightEntry) of
+                                [] -> cache_delete(Ledger, CF, cd_block_name(Target));
+                                HeightEntry1 ->
+                                    cache_put(Ledger, CF, cd_block_name(Target),
+                                              term_to_binary(HeightEntry1))
+                            end;
+                        not_found ->
+                            {error, missing_height_entry}
+                    end
+            end;
+        not_found ->
+            {error, not_found};
+        Err -> Err                
+    end.
+
+cooldown_stake(Val, Ledger) ->
+    Address = blockchain_ledger_validator_v1:address(Val),
+    Owner = blockchain_ledger_validator_v1:owner_address(Val),
+
+    CF = default_cf(Ledger),
+    case cache_get(Ledger, CF, owner_name(Owner), []) of
+        {ok, OE} ->
+            Entries = binary_to_term(OE),
+            lager:info("got ~p", [Entries]),
+            case lists:filter(fun({A, _S, _T}) ->
+                                      A == Address
+                              end, Entries) of
+                [] -> {ok, 0};
+                [{_Addr, Stake, _TargetBlock}] -> {ok, Stake}
+            end;
+        not_found ->
+            lager:info("got nada"),
+            {ok, 0};
+        Err -> Err                
+    end.
+
+circulating_hnt(Ledger) ->
+    cache_fold(
+      Ledger,
+      entries_cf(Ledger),
+      fun({_Addr, BinEnt}, Acc) ->
+              Ent = blockchain_ledger_entry_v1:deserialize(BinEnt),
+              Acc + blockchain_ledger_entry_v1:balance(Ent)
+      end,
+      0
+     ).    
 
 staked_hnt(Ledger) ->
     cache_fold(
@@ -3574,10 +3667,6 @@ cooldown_hnt(Ledger) ->
       [{start, {seek, <<"$cd_block_">>}},
        {iterate_upper_bound, <<"$cd_block`">>}]
      ).
-
-%% not sure that we need this
-%% cancel_stake_delay(_, _, _) ->
-%%     ok.
 
 batch_from_cache(ETS) ->
     {ok, Batch} = rocksdb:batch(),
@@ -3697,16 +3786,27 @@ load_delayed_vars(DVars, Ledger) ->
 
 snapshot_delayed_hnt(Ledger) ->
     CF = default_cf(Ledger),
-    %% steal this from the raw code
+    %% grab everything related to looking up HNT during cooldown
     lists:reverse(
-      cache_fold(
-        Ledger, CF,
-        fun(KV, Acc) ->
-                [KV | Acc]
-        end,
-        [],
-        [{start, {seek, <<"$cd_block_">>}},
-         {iterate_upper_bound, <<"$cd_block`">>}])).
+      lists:append(
+        %% height entries
+        cache_fold(
+          Ledger, CF,
+          fun(KV, Acc) ->
+                  [KV | Acc]
+          end,
+          [],
+          [{start, {seek, <<"$cd_block_">>}},
+           {iterate_upper_bound, <<"$cd_block`">>}]),
+        %% owner entries
+        cache_fold(
+          Ledger, CF,
+          fun(KV, Acc) ->
+                  [KV | Acc]
+          end,
+          [],
+          [{start, {seek, <<"$owner_">>}},
+           {iterate_upper_bound, <<"$owner`">>}]))).
 
 load_delayed_hnt(DHNT, Ledger) ->
     CF = default_cf(Ledger),

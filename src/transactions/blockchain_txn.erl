@@ -472,7 +472,7 @@ absorb_block(Block, Rescue, Chain) ->
     case absorb_txns(Transactions, Rescue, Chain) of
         ok ->
             ok = blockchain_ledger_v1:increment_height(Block, Ledger),
-            ok = blockchain_ledger_v1:process_delayed_txns(Height, Ledger, Chain),
+            ok = blockchain_ledger_v1:process_delayed_actions(Height, Ledger, Chain),
             {ok, Chain};
         Error ->
             Error

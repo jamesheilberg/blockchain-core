@@ -145,9 +145,10 @@ absorb(Txn, Chain) ->
 print(undefined) -> <<"type=validator_heartbeat, undefined">>;
 print(#blockchain_txn_validator_heartbeat_v1_pb{
          addr = Val,
-         height = H}) ->
-    io_lib:format("type=validator_heartbeat, validator=~p, height=~p",
-                  [?TO_ANIMAL_NAME(Val), H]).
+         height = H,
+         version = V}) ->
+    io_lib:format("type=validator_heartbeat, validator=~p, height=~p, version=~p",
+                  [?TO_ANIMAL_NAME(Val), H, V]).
 
 
 -spec to_json(txn_validator_heartbeat(), blockchain_json:opts()) -> blockchain_json:json_object().
@@ -157,7 +158,8 @@ to_json(Txn, _Opts) ->
       hash => ?BIN_TO_B64(hash(Txn)),
       addr => ?BIN_TO_B58(addr(Txn)),
       height => height(Txn),
-      signature => ?BIN_TO_B64(signature(Txn))
+      signature => ?BIN_TO_B64(signature(Txn)),
+      version => version(Txn)
      }.
 
 %% ------------------------------------------------------------------

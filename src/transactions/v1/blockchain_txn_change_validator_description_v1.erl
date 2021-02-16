@@ -159,6 +159,7 @@ absorb(Txn, Chain) ->
     Owner = owner(Txn),
     Validator = addr(Txn),
     Description = description(Txn),
+    Nonce = nonce(Txn),
     Fee = fee(Txn),
 
     case blockchain_ledger_v1:debit_fee(Owner, Fee, Ledger, true) of
@@ -168,7 +169,8 @@ absorb(Txn, Chain) ->
                 {ok, V} ->
                     %% make sure that the nonce is correct
                     V1 = blockchain_ledger_validator_v1:description(Description, V),
-                    blockchain_ledger_v1:update_validator(Validator, V1, Ledger);
+                    V2 = blockchain_ledger_validator_v1:nonce(Nonce, V1),
+                    blockchain_ledger_v1:update_validator(Validator, V2, Ledger);
                 Err1 -> Err1
             end
     end.

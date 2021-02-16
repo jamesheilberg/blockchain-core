@@ -15,15 +15,19 @@
 -include_lib("helium_proto/include/blockchain_txn_transfer_validator_stake_v1_pb.hrl").
 
 -export([
-         new/5,
+         new/5, new/6,
          hash/1,
          old_validator/1,
          new_validator/1,
-         owner/1,
+         old_owner/1,
+         new_owner/1,
          new_validator_signature/1,
-         owner_signature/1,
+         old_owner_signature/1,
+         new_owner_signature/1,
          fee/1, calculate_fee/2, calculate_fee/5,
-         sign/2, new_sign/2,
+         sign/2,
+         new_validator_sign/2,
+         new_owner_sign/2,
          is_valid/2,
          absorb/2,
          print/1,
@@ -44,23 +48,39 @@
 new(OldValidatorAddress, NewValidatorAddress,
     OwnerAddress,
     Nonce, Fee) ->
+    new(OldValidatorAddress, NewValidatorAddress,
+        OwnerAddress, <<>>,
+        Nonce, Fee).
+
+-spec new(libp2p_crypto:pubkey_bin(), libp2p_crypto:pubkey_bin(),
+          libp2p_crypto:pubkey_bin(), libp2p_crypto:pubkey_bin(),
+          pos_integer(), pos_integer()) ->
+          txn_transfer_validator_stake().
+new(OldValidatorAddress, NewValidatorAddress,
+    OldOwnerAddress, NewOwnerAddress,
+    Nonce, Fee) ->
     #blockchain_txn_transfer_validator_stake_v1_pb{
        old_addr = OldValidatorAddress,
        new_addr = NewValidatorAddress,
-       owner = OwnerAddress,
+       new_owner = NewOwnerAddress,
+       old_owner = OldOwnerAddress,
        fee = Fee,
        nonce = Nonce
     }.
 
 -spec hash(txn_transfer_validator_stake()) -> blockchain_txn:hash().
 hash(Txn) ->
-    BaseTxn = Txn#blockchain_txn_transfer_validator_stake_v1_pb{owner_signature = <<>>, new_validator_signature = <<>>},
+    BaseTxn = base(Txn),
     EncodedTxn = blockchain_txn_transfer_validator_stake_v1_pb:encode_msg(BaseTxn),
     crypto:hash(sha256, EncodedTxn).
 
--spec owner(txn_transfer_validator_stake()) -> libp2p_crypto:pubkey_bin().
-owner(Txn) ->
-    Txn#blockchain_txn_transfer_validator_stake_v1_pb.owner.
+-spec old_owner(txn_transfer_validator_stake()) -> libp2p_crypto:pubkey_bin().
+old_owner(Txn) ->
+    Txn#blockchain_txn_transfer_validator_stake_v1_pb.old_owner.
+
+-spec new_owner(txn_transfer_validator_stake()) -> libp2p_crypto:pubkey_bin().
+new_owner(Txn) ->
+    Txn#blockchain_txn_transfer_validator_stake_v1_pb.new_owner.
 
 -spec new_validator(txn_transfer_validator_stake()) -> libp2p_crypto:pubkey_bin().
 new_validator(Txn) ->
@@ -89,13 +109,18 @@ calculate_fee(Txn, Chain) ->
 calculate_fee(Txn, Ledger, DCPayloadSize, TxnFeeMultiplier, _) ->
     ?calculate_fee(Txn#blockchain_txn_transfer_validator_stake_v1_pb{fee=0,
                                                                      new_validator_signature = <<0:512>>,
-                                                                     owner_signature = <<0:512>>},
+                                                                     old_owner_signature = <<0:512>>,
+                                                                     new_owner_signature = <<0:512>>},
     Ledger, DCPayloadSize, TxnFeeMultiplier).
 
 
--spec owner_signature(txn_transfer_validator_stake()) -> binary().
-owner_signature(Txn) ->
-    Txn#blockchain_txn_transfer_validator_stake_v1_pb.owner_signature.
+-spec new_owner_signature(txn_transfer_validator_stake()) -> binary().
+new_owner_signature(Txn) ->
+    Txn#blockchain_txn_transfer_validator_stake_v1_pb.new_owner_signature.
+
+-spec old_owner_signature(txn_transfer_validator_stake()) -> binary().
+old_owner_signature(Txn) ->
+    Txn#blockchain_txn_transfer_validator_stake_v1_pb.old_owner_signature.
 
 -spec new_validator_signature(txn_transfer_validator_stake()) -> binary().
 new_validator_signature(Txn) ->
@@ -103,34 +128,50 @@ new_validator_signature(Txn) ->
 
 -spec sign(txn_transfer_validator_stake(), libp2p_crypto:sig_fun()) -> txn_transfer_validator_stake().
 sign(Txn, SigFun) ->
-    BaseTxn = Txn#blockchain_txn_transfer_validator_stake_v1_pb{owner_signature= <<>>,
-                                                                new_validator_signature= <<>>},
+    BaseTxn = base(Txn),
     EncodedTxn = blockchain_txn_transfer_validator_stake_v1_pb:encode_msg(BaseTxn),
-    Txn#blockchain_txn_transfer_validator_stake_v1_pb{owner_signature=SigFun(EncodedTxn)}.
+    Txn#blockchain_txn_transfer_validator_stake_v1_pb{old_owner_signature=SigFun(EncodedTxn)}.
 
--spec new_sign(txn_transfer_validator_stake(), libp2p_crypto:sig_fun()) -> txn_transfer_validator_stake().
-new_sign(Txn, SigFun) ->
-    BaseTxn = Txn#blockchain_txn_transfer_validator_stake_v1_pb{owner_signature= <<>>,
-                                                                new_validator_signature= <<>>},
+-spec new_validator_sign(txn_transfer_validator_stake(), libp2p_crypto:sig_fun()) -> txn_transfer_validator_stake().
+new_validator_sign(Txn, SigFun) ->
+    BaseTxn = base(Txn),
     EncodedTxn = blockchain_txn_transfer_validator_stake_v1_pb:encode_msg(BaseTxn),
     Txn#blockchain_txn_transfer_validator_stake_v1_pb{new_validator_signature=SigFun(EncodedTxn)}.
 
+-spec new_owner_sign(txn_transfer_validator_stake(), libp2p_crypto:sig_fun()) -> txn_transfer_validator_stake().
+new_owner_sign(Txn, SigFun) ->
+    BaseTxn = base(Txn),
+    EncodedTxn = blockchain_txn_transfer_validator_stake_v1_pb:encode_msg(BaseTxn),
+    Txn#blockchain_txn_transfer_validator_stake_v1_pb{new_owner_signature=SigFun(EncodedTxn)}.
+
+base(Txn) ->
+  Txn#blockchain_txn_transfer_validator_stake_v1_pb{old_owner_signature = <<>>,
+                                                    new_owner_signature = <<>>,
+                                                    new_validator_signature = <<>>}.
 
 -spec is_valid_new_validator(txn_transfer_validator_stake()) -> boolean().
 is_valid_new_validator(#blockchain_txn_transfer_validator_stake_v1_pb{
                           new_addr=PubKeyBin,
                           new_validator_signature=Signature}=Txn) ->
-    BaseTxn = Txn#blockchain_txn_transfer_validator_stake_v1_pb{owner_signature= <<>>,
-                                                                new_validator_signature= <<>>},
+    BaseTxn = base(Txn),
     EncodedTxn = blockchain_txn_transfer_validator_stake_v1_pb:encode_msg(BaseTxn),
     PubKey = libp2p_crypto:bin_to_pubkey(PubKeyBin),
     libp2p_crypto:verify(EncodedTxn, Signature, PubKey).
 
--spec is_valid_owner(txn_transfer_validator_stake()) -> boolean().
-is_valid_owner(#blockchain_txn_transfer_validator_stake_v1_pb{owner=PubKeyBin,
-                                                              owner_signature=Signature}=Txn) ->
-    BaseTxn = Txn#blockchain_txn_transfer_validator_stake_v1_pb{owner_signature= <<>>,
-                                                                new_validator_signature= <<>>},
+-spec is_valid_new_owner(txn_transfer_validator_stake()) -> boolean().
+is_valid_new_owner(#blockchain_txn_transfer_validator_stake_v1_pb{
+                      new_owner=PubKeyBin,
+                      new_owner_signature=Signature}=Txn) ->
+    BaseTxn = base(Txn),
+    EncodedTxn = blockchain_txn_transfer_validator_stake_v1_pb:encode_msg(BaseTxn),
+    PubKey = libp2p_crypto:bin_to_pubkey(PubKeyBin),
+    libp2p_crypto:verify(EncodedTxn, Signature, PubKey).
+
+-spec is_valid_old_owner(txn_transfer_validator_stake()) -> boolean().
+is_valid_old_owner(#blockchain_txn_transfer_validator_stake_v1_pb{
+                      old_owner=PubKeyBin,
+                      old_owner_signature=Signature}=Txn) ->
+    BaseTxn = base(Txn),
     EncodedTxn = blockchain_txn_transfer_validator_stake_v1_pb:encode_msg(BaseTxn),
     PubKey = libp2p_crypto:bin_to_pubkey(PubKeyBin),
     libp2p_crypto:verify(EncodedTxn, Signature, PubKey).
@@ -143,13 +184,25 @@ is_valid(Txn, Chain) ->
     OldValidator = old_validator(Txn),
     Nonce = nonce(Txn),
     Fee = fee(Txn),
-    case {is_valid_owner(Txn), is_valid_new_validator(Txn)} of
+    case {is_valid_old_owner(Txn), is_valid_new_validator(Txn)} of
         {false, _} ->
             {error, bad_owner_signature};
         {_, false} ->
             {error, bad_validator_signature};
         {true, true} ->
             try
+                case new_owner(Txn) /= <<>> of
+                    true ->
+                        case is_valid_new_owner(Txn) of
+                            true ->
+                                ok;
+                            false ->
+                                throw(bad_new_owner_signature)
+                        end;
+                    _ ->
+                        %% no new owner just means this is an in-account transfer
+                        ok
+                end,
                 %% check fee
                 AreFeesEnabled = blockchain_ledger_v1:txn_fees_active(Ledger),
                 ExpectedTxnFee = calculate_fee(Txn, Chain),
@@ -194,13 +247,14 @@ is_valid(Txn, Chain) ->
 -spec absorb(txn_transfer_validator_stake(), blockchain:blockchain()) -> ok | {error, atom()} | {error, {atom(), any()}}.
 absorb(Txn, Chain) ->
     Ledger = blockchain:ledger(Chain),
-    Owner = owner(Txn),
+    NewOwner = new_owner(Txn),
+    OldOwner = old_owner(Txn),
     NewValidator = new_validator(Txn),
     OldValidator = old_validator(Txn),
     Nonce = nonce(Txn),
     Fee = fee(Txn),
     
-    case blockchain_ledger_v1:debit_fee(Owner, Fee, Ledger, true) of
+    case blockchain_ledger_v1:debit_fee(OldOwner, Fee, Ledger, true) of
         {error, _Reason} = Err -> Err;
         ok ->
             case blockchain_ledger_v1:get_validator(OldValidator, Ledger) of
@@ -209,12 +263,17 @@ absorb(Txn, Chain) ->
                     OV1 = blockchain_ledger_validator_v1:status(unstaked, OV),
                     OV2 = blockchain_ledger_validator_v1:stake(0, OV1),
                     %% increment nonce 
-                    OV3 = blockchain_ledger_validator_v1:nonce(Nonce+1, OV2),
+                    OV3 = blockchain_ledger_validator_v1:nonce(Nonce, OV2),
                     ok = blockchain_ledger_v1:update_validator(OldValidator, OV3, Ledger),
                     %% change address on old record 
                     NV =  blockchain_ledger_validator_v1:address(NewValidator, OV),
-                    NV1 = blockchain_ledger_validator_v1:nonce(Nonce+1, NV),
-                    ok = blockchain_ledger_v1:update_validator(NewValidator, NV1, Ledger);
+                    NV1 = blockchain_ledger_validator_v1:nonce(Nonce, NV),
+                    NV2 =
+                        case NewOwner == <<>> of
+                            true -> NV1;
+                            false -> blockchain_ledger_validator_v1:owner_address(NewOwner, NV1)
+                        end,
+                    ok = blockchain_ledger_v1:update_validator(NewValidator, NV2, Ledger);
                 Err -> Err
             end
     end.
@@ -222,12 +281,14 @@ absorb(Txn, Chain) ->
 -spec print(txn_transfer_validator_stake()) -> iodata().
 print(undefined) -> <<"type=transfer_validator_stake, undefined">>;
 print(#blockchain_txn_transfer_validator_stake_v1_pb{
-         owner = O,
+         new_owner = NO,
+         old_owner = OO,
          new_addr = NewVal,
          old_addr = OldVal,
          nonce = N}) ->
-    io_lib:format("type=transfer_validator_stake, owner=~p, new_validator=~p, old_validator=~p, nonce=~p",
-                  [?TO_B58(O), ?TO_ANIMAL_NAME(NewVal), ?TO_ANIMAL_NAME(OldVal), N]).
+    io_lib:format("type=transfer_validator_stake, old_owner=~p, new_owner(optional)=~p "
+                  "new_validator=~p, old_validator=~p, nonce=~p",
+                  [?TO_B58(OO), ?TO_B58(NO), ?TO_ANIMAL_NAME(NewVal), ?TO_ANIMAL_NAME(OldVal), N]).
 
 
 -spec to_json(txn_transfer_validator_stake(), blockchain_json:opts()) -> blockchain_json:json_object().
@@ -237,9 +298,11 @@ to_json(Txn, _Opts) ->
       hash => ?BIN_TO_B64(hash(Txn)),
       new_addr => ?BIN_TO_B58(new_validator(Txn)),
       old_addr => ?BIN_TO_B58(old_validator(Txn)),
-      owner => ?BIN_TO_B58(owner(Txn)),
+      new_owner => ?BIN_TO_B58(new_owner(Txn)),
+      old_owner => ?BIN_TO_B58(old_owner(Txn)),
       new_validator_signature => ?BIN_TO_B64(new_validator_signature(Txn)),
-      owner_signature => ?BIN_TO_B64(owner_signature(Txn)),
+      old_owner_signature => ?BIN_TO_B64(old_owner_signature(Txn)),
+      new_owner_signature => ?BIN_TO_B64(new_owner_signature(Txn)),
       fee => fee(Txn),
       nonce => nonce(Txn)
      }.

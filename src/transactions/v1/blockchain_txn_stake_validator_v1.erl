@@ -15,11 +15,12 @@
 -include_lib("helium_proto/include/blockchain_txn_stake_validator_v1_pb.hrl").
 
 -export([
-         new/5,
+         new/5, new/6,
          hash/1,
          validator/1,
          owner/1,
          stake/1,
+         nonce/1,
          description/1,
          validator_signature/1,
          owner_signature/1,
@@ -43,12 +44,21 @@
           txn_stake_validator().
 new(ValidatorAddress, OwnerAddress,
     Stake, Description, Fee) ->
+    new(ValidatorAddress, OwnerAddress,
+        Stake, Description, 0, Fee).
+
+-spec new(libp2p_crypto:pubkey_bin(), libp2p_crypto:pubkey_bin(),
+          pos_integer(), string(), pos_integer(), non_neg_integer()) ->
+          txn_stake_validator().
+new(ValidatorAddress, OwnerAddress,
+    Stake, Description, Nonce, Fee) ->
     #blockchain_txn_stake_validator_v1_pb{
        validator = ValidatorAddress,
        owner = OwnerAddress,
        stake = Stake,
        description = Description,
-       fee = Fee
+       fee = Fee,
+       nonce = Nonce
     }.
 
 -spec hash(txn_stake_validator()) -> blockchain_txn:hash().
@@ -68,6 +78,10 @@ validator(Txn) ->
 -spec stake(txn_stake_validator()) -> pos_integer().
 stake(Txn) ->
     Txn#blockchain_txn_stake_validator_v1_pb.stake.
+
+-spec nonce(txn_stake_validator()) -> pos_integer().
+nonce(Txn) ->
+    Txn#blockchain_txn_stake_validator_v1_pb.nonce.
 
 -spec description(txn_stake_validator()) -> string().
 description(Txn) ->
@@ -140,6 +154,7 @@ is_valid(Txn, Chain) ->
     Validator = ?MODULE:validator(Txn),
     Stake = stake(Txn),
     Fee = fee(Txn),
+    Nonce = nonce(Txn),
     case {is_valid_owner(Txn), is_valid_validator(Txn)} of
         {false, _} ->
             {error, bad_owner_signature};
@@ -150,36 +165,53 @@ is_valid(Txn, Chain) ->
                 %% check fee
                 AreFeesEnabled = blockchain_ledger_v1:txn_fees_active(Ledger),
                 ExpectedTxnFee = calculate_fee(Txn, Chain),
+                {ok, MinStake} = blockchain:config(?validator_minimum_stake, Ledger),
                 case ExpectedTxnFee =< Fee orelse not AreFeesEnabled of
                     false -> throw({wrong_txn_fee, {ExpectedTxnFee, Fee}});
                     true -> ok
                 end,
                 %% make sure that this validator doesn't already exist
                 case blockchain_ledger_v1:get_validator(Validator, Ledger) of
-                    %% TODO/pevm: this is not completely true?  What we actually need to do
-                    %% here but can't right now is to make sure that the validator is nonexistent
-                    %% OR unstaked, in which case we need to make a decision about the behavior of
-                    %% reasserting an unstaked validator which might have stake value in cooldown
-                    {ok, _} -> throw(already_exists);
-                    {error, not_found} -> ok;
-                    {error, Reason} -> throw({validator_fetch_error, Reason})
-                end,
-                %% make sure the staking amount is high enough
-                {ok, MinStake} = blockchain:config(?validator_minimum_stake, Ledger),
-                case Stake >= MinStake of
-                    true -> ok;
-                    false -> throw(stake_too_low)
-                end,
-                %% make sure that the owner has enough HNT to stake
-                case blockchain_ledger_v1:find_entry(Owner, Ledger) of
-                    {ok, Entry} ->
-                        Balance = blockchain_ledger_entry_v1:balance(Entry),
-                        case Balance >= Stake of
-                            true -> ok;
-                            false -> throw({balance_too_low, {bal, Balance, stk, Stake}})
+                    {ok, Val} ->
+                        ValNonce = blockchain_ledger_validator_v1:nonce(Val),
+                        case Nonce of
+                            0 ->
+                                throw(already_exists);
+                            N when N =:= (ValNonce + 1) ->
+                                %% check that we have adequate stake in cooldown to restore
+                                {ok, CooldownStake} = blockchain_ledger_v1:cooldown_stake(Val, Ledger),
+                                case CooldownStake >= MinStake of
+                                    true -> ok;
+                                    false -> throw({not_enough_cooldown, cool,
+                                                    CooldownStake, min, MinStake})
+                                end,                                
+                                ok;
+                            N -> 
+                                throw({bad_nonce, exp, (ValNonce + 1), got, N})
                         end;
-                    {error, _} ->
-                        throw(bad_owner_entry)
+                    {error, not_found} ->
+                        case Nonce of
+                            0 ->
+                                %% make sure the staking amount is high enough
+                                case Stake == MinStake of
+                                    true -> ok;
+                                    false -> throw(stake_too_low)
+                                end,
+                                %% make sure that the owner has enough HNT to stake
+                                case blockchain_ledger_v1:find_entry(Owner, Ledger) of
+                                    {ok, Entry} ->
+                                        Balance = blockchain_ledger_entry_v1:balance(Entry),
+                                        case Balance >= Stake of
+                                            true -> ok;
+                                            false -> throw({balance_too_low, {bal, Balance, stk, Stake}})
+                                        end;
+                                    {error, _} ->
+                                        throw(bad_owner_entry)
+                                end,
+                                ok;
+                            _ -> throw(nonce_not_zero)
+                        end;
+                    {error, Reason} -> throw({validator_fetch_error, Reason})
                 end,
                 ok
             catch throw:Cause ->
@@ -194,6 +226,7 @@ absorb(Txn, Chain) ->
     Validator = validator(Txn),
     Stake = stake(Txn),
     Description = description(Txn),
+    TxnNonce = nonce(Txn),
     Fee = fee(Txn),
     {ok, Entry} = blockchain_ledger_v1:find_entry(Owner, Ledger),
     Nonce = blockchain_ledger_entry_v1:nonce(Entry),
@@ -204,7 +237,13 @@ absorb(Txn, Chain) ->
             case blockchain_ledger_v1:debit_account(Owner, Stake, Nonce + 1, Ledger) of
                 {error, _Reason} = Err1 -> Err1;
                 ok ->
-                    blockchain_ledger_v1:add_validator(Validator, Owner, Stake, Description, Ledger)
+                    case TxnNonce of
+                        0 ->
+                            blockchain_ledger_v1:add_validator(Validator, Owner, Stake,
+                                                               Description, Ledger);
+                        _ ->
+                            blockchain_ledger_v1:activate_validator(Validator, Ledger)                            
+                    end
             end
     end.
 
@@ -230,6 +269,7 @@ to_json(Txn, _Opts) ->
       owner_signature => ?BIN_TO_B64(owner_signature(Txn)),
       description => description(Txn),
       fee => fee(Txn),
+      nonce => nonce(Txn),
       stake => stake(Txn)
      }.
 
