@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == Blockchain Transaction Genesis Gateway ==
+%% == Blockchain Transaction Genesis Validator ==
 %% @end
 %%%-------------------------------------------------------------------
 -module(blockchain_txn_gen_validator_v1).
