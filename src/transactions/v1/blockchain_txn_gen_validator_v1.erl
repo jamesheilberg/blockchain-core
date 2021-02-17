@@ -13,13 +13,12 @@
 -include_lib("helium_proto/include/blockchain_txn_gen_validator_v1_pb.hrl").
 
 -export([
-    new/4,
+    new/3,
     hash/1,
     sign/2,
     address/1,
     owner/1,
     stake/1,
-    description/1,
     fee/1,
     is_valid/2,
     absorb/2,
@@ -40,13 +39,11 @@
 %%--------------------------------------------------------------------
 -spec new(Address :: libp2p_crypto:pubkey_bin(),
           Owner :: libp2p_crypto:pubkey_bin(),
-          Stake :: pos_integer(),
-          Description :: binary()) -> txn_genesis_validator().
-new(Address, Owner, Stake, Description) ->
+          Stake :: pos_integer()) -> txn_genesis_validator().
+new(Address, Owner, Stake) ->
     #blockchain_txn_gen_validator_v1_pb{addr = Address,
                                         owner = Owner,
-                                        stake = Stake,
-                                        description = Description}.
+                                        stake = Stake}.
 
 
 %%--------------------------------------------------------------------
@@ -82,10 +79,6 @@ owner(Txn) ->
 stake(Txn) ->
     Txn#blockchain_txn_gen_validator_v1_pb.stake.
 
--spec description(txn_genesis_validator()) -> string().
-description(Txn) ->
-    Txn#blockchain_txn_gen_validator_v1_pb.description.
-
 -spec fee(txn_genesis_validator()) -> non_neg_integer().
 fee(_Txn) ->
     0.
@@ -115,11 +108,9 @@ absorb(Txn, Chain) ->
     Address = ?MODULE:address(Txn),
     Owner = ?MODULE:owner(Txn),
     Stake = ?MODULE:stake(Txn),
-    Description = ?MODULE:description(Txn),
     blockchain_ledger_v1:add_validator(Address,
                                        Owner,
                                        Stake,
-                                       Description,
                                        Ledger).
 
 %%--------------------------------------------------------------------
@@ -130,9 +121,9 @@ absorb(Txn, Chain) ->
 print(undefined) -> <<"type=genesis_validator, undefined">>;
 print(#blockchain_txn_gen_validator_v1_pb{
          addr = Address, owner = Owner,
-         stake = Stake, description = Description}) ->
-    io_lib:format("type=genesis_validator Address=~p, owner=~p, stake=~p, description=~s",
-                  [?TO_ANIMAL_NAME(Address), ?TO_B58(Owner), Stake, Description]).
+         stake = Stake}) ->
+    io_lib:format("type=genesis_validator Address=~p, owner=~p, stake=~p",
+                  [?TO_ANIMAL_NAME(Address), ?TO_B58(Owner), Stake]).
 
 
 -spec to_json(txn_genesis_validator(), blockchain_json:opts()) -> blockchain_json:json_object().
@@ -142,8 +133,7 @@ to_json(Txn, _Opts) ->
       hash => ?BIN_TO_B64(hash(Txn)),
       addr => ?BIN_TO_B58(address(Txn)),
       owner => ?BIN_TO_B58(owner(Txn)),
-      stake => stake(Txn),
-      description => description(Txn)
+      stake => stake(Txn)
      }.
 
 
@@ -155,28 +145,23 @@ to_json(Txn, _Opts) ->
 new_test() ->
     Tx = #blockchain_txn_gen_validator_v1_pb{addr = <<"0">>,
                                              owner = <<"1">>,
-                                             stake = 10000,
-                                             description = <<"meat popsicle">>},
-    ?assertEqual(Tx, new(<<"0">>, <<"1">>, 10000, <<"meat popsicle">>)).
+                                             stake = 10000},
+    ?assertEqual(Tx, new(<<"0">>, <<"1">>, 10000)).
 
 validator_test() ->
-    Tx = new(<<"0">>, <<"1">>, 1000, <<"meat popsicle">>),
+    Tx = new(<<"0">>, <<"1">>, 1000),
     ?assertEqual(<<"0">>, address(Tx)).
 
 owner_test() ->
-    Tx = new(<<"0">>, <<"1">>, 1000, <<"meat popsicle">>),
+    Tx = new(<<"0">>, <<"1">>, 1000),
     ?assertEqual(<<"1">>, owner(Tx)).
 
 stake_test() ->
-    Tx = new(<<"0">>, <<"1">>, 1000, <<"meat popsicle">>),
+    Tx = new(<<"0">>, <<"1">>, 1000),
     ?assertEqual(1000, stake(Tx)).
 
-description_test() ->
-    Tx = new(<<"0">>, <<"1">>, 1000, <<"meat popsicle">>),
-    ?assertEqual(<<"meat popsicle">>, description(Tx)).
-
 json_test() ->
-    Tx = new(<<"0">>, <<"1">>, 1000, <<"meat popsicle">>),
+    Tx = new(<<"0">>, <<"1">>, 1000),
     Json = to_json(Tx, []),
     ?assertEqual(lists:sort(maps:keys(Json)),
                  lists:sort([type, hash] ++ record_info(fields, blockchain_txn_gen_validator_v1_pb))).

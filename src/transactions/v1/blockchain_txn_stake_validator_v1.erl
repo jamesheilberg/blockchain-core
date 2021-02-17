@@ -15,13 +15,12 @@
 -include_lib("helium_proto/include/blockchain_txn_stake_validator_v1_pb.hrl").
 
 -export([
-         new/5, new/6,
+         new/4, new/5,
          hash/1,
          validator/1,
          owner/1,
          stake/1,
          nonce/1,
-         description/1,
          validator_signature/1,
          owner_signature/1,
          fee/1, calculate_fee/2, calculate_fee/5,
@@ -40,23 +39,22 @@
 -export_type([txn_stake_validator/0]).
 
 -spec new(libp2p_crypto:pubkey_bin(), libp2p_crypto:pubkey_bin(),
-          pos_integer(), string(), pos_integer()) ->
+          pos_integer(), pos_integer()) ->
           txn_stake_validator().
 new(ValidatorAddress, OwnerAddress,
-    Stake, Description, Fee) ->
+    Stake, Fee) ->
     new(ValidatorAddress, OwnerAddress,
-        Stake, Description, 0, Fee).
+        Stake, 0, Fee).
 
 -spec new(libp2p_crypto:pubkey_bin(), libp2p_crypto:pubkey_bin(),
-          pos_integer(), string(), pos_integer(), non_neg_integer()) ->
+          pos_integer(), pos_integer(), non_neg_integer()) ->
           txn_stake_validator().
 new(ValidatorAddress, OwnerAddress,
-    Stake, Description, Nonce, Fee) ->
+    Stake, Nonce, Fee) ->
     #blockchain_txn_stake_validator_v1_pb{
        validator = ValidatorAddress,
        owner = OwnerAddress,
        stake = Stake,
-       description = Description,
        fee = Fee,
        nonce = Nonce
     }.
@@ -82,10 +80,6 @@ stake(Txn) ->
 -spec nonce(txn_stake_validator()) -> pos_integer().
 nonce(Txn) ->
     Txn#blockchain_txn_stake_validator_v1_pb.nonce.
-
--spec description(txn_stake_validator()) -> string().
-description(Txn) ->
-    Txn#blockchain_txn_stake_validator_v1_pb.description.
 
 -spec fee(txn_stake_validator()) -> non_neg_integer().
 fee(Txn) ->
@@ -225,7 +219,6 @@ absorb(Txn, Chain) ->
     Owner = owner(Txn),
     Validator = validator(Txn),
     Stake = stake(Txn),
-    Description = description(Txn),
     TxnNonce = nonce(Txn),
     Fee = fee(Txn),
     {ok, Entry} = blockchain_ledger_v1:find_entry(Owner, Ledger),
@@ -239,8 +232,7 @@ absorb(Txn, Chain) ->
                 ok ->
                     case TxnNonce of
                         0 ->
-                            blockchain_ledger_v1:add_validator(Validator, Owner, Stake,
-                                                               Description, Ledger);
+                            blockchain_ledger_v1:add_validator(Validator, Owner, Stake, Ledger);
                         _ ->
                             blockchain_ledger_v1:activate_validator(Validator, Ledger)                            
                     end
@@ -253,9 +245,9 @@ print(#blockchain_txn_stake_validator_v1_pb{
          owner = O,
          validator = Val,
          stake = S,
-         description = D}) ->
-    io_lib:format("type=stake_validator, owner=~p, validator=~p, stake=~p, description=~s",
-                  [?TO_B58(O), ?TO_ANIMAL_NAME(Val), S, D]).
+         nonce = N}) ->
+    io_lib:format("type=stake_validator, owner=~p, validator=~p, stake=~p, nonce=~p",
+                  [?TO_B58(O), ?TO_ANIMAL_NAME(Val), S, N]).
 
 
 -spec to_json(txn_stake_validator(), blockchain_json:opts()) -> blockchain_json:json_object().
@@ -267,7 +259,6 @@ to_json(Txn, _Opts) ->
       owner => ?BIN_TO_B58(owner(Txn)),
       validator_signature => ?BIN_TO_B64(validator_signature(Txn)),
       owner_signature => ?BIN_TO_B64(owner_signature(Txn)),
-      description => description(Txn),
       fee => fee(Txn),
       nonce => nonce(Txn),
       stake => stake(Txn)
@@ -279,8 +270,7 @@ to_json(Txn, _Opts) ->
 -ifdef(TEST).
 
 to_json_test() ->
-    Tx = new(<<"validator_address">>, <<"owner_address">>, 1000,
-             <<"some random description">>, 20),
+    Tx = new(<<"validator_address">>, <<"owner_address">>, 1000, 20),
     Json = to_json(Tx, []),
     ?assertEqual(lists:sort(maps:keys(Json)),
                  lists:sort([type, hash] ++ record_info(fields, blockchain_txn_stake_validator_v1_pb))).

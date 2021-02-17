@@ -133,7 +133,7 @@
     add_gw_to_hex/3,
     remove_gw_from_hex/3,
 
-    add_validator/5,
+    add_validator/4,
     get_validator/2,
     activate_validator/2,
     deactivate_validator/2,
@@ -3460,18 +3460,16 @@ bootstrap_gw_denorm(Ledger) ->
 -spec add_validator(ValidatorAddress :: libp2p_crypto:pubkey_bin(),
                     OwnerAddress :: libp2p_crypto:pubkey_bin(),
                     Stake :: pos_integer(),
-                    Description :: string(),
                     Ledger :: ledger()) -> ok | {error, validator_already_added}.
 add_validator(Address,
               OwnerAddr,
               Stake,
-              Description,
               Ledger) ->
     case ?MODULE:get_validator(Address, Ledger) of
         {ok, _} ->
             {error, validator_already_added};
         _ ->
-            Val = blockchain_ledger_validator_v1:new(Address, OwnerAddr, Description, Stake),
+            Val = blockchain_ledger_validator_v1:new(Address, OwnerAddr, Stake),
             update_validator(Address, Val, Ledger)
     end.
 
@@ -3538,7 +3536,10 @@ activate_validator(Address, Ledger) ->
         Error -> Error
     end.
 
--spec delay_stake(Owner :: libp2p_crypto:pubkey_bin(), Validator: libp2p_crypto:pubkey_bin(), Stake :: non_neg_integer(), Ledger :: ledger()) -> ok | {error, any()}.
+-spec delay_stake(Owner :: libp2p_crypto:pubkey_bin(),
+                  Validator :: libp2p_crypto:pubkey_bin(),
+                  Stake :: non_neg_integer(), Ledger :: ledger()) ->
+          ok | {error, any()}.
 delay_stake(Owner, Validator, Stake, Ledger) ->
     DefaultCF = default_cf(Ledger),
     {ok, Height} = current_height(Ledger),

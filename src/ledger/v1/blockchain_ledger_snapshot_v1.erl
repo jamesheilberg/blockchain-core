@@ -467,7 +467,15 @@ get_blocks(Chain) ->
     %% this is for rewards calculation when an epoch ends
     %% see https://github.com/helium/blockchain-core/pull/627
     #{ election_height := ElectionHeight } = blockchain_election:election_info(Ledger, Chain),
-    {ok, GraceBlocks} = blockchain:config(?sc_grace_blocks, Ledger),
+    GraceBlocks =
+        case blockchain:config(?sc_grace_blocks, Ledger) of
+            {ok, GBs} ->
+                GBs;
+            %% hard matching on this config makes it impossible to snapshot before we hit state
+            %% channels
+            {error, not_found} ->
+                0
+        end,
 
     DLedger = blockchain_ledger_v1:mode(delayed, Ledger),
     {ok, DHeight} = blockchain_ledger_v1:current_height(DLedger),

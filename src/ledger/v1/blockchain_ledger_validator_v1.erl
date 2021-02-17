@@ -6,11 +6,10 @@
 -module(blockchain_ledger_validator_v1).
 
 -export([
-         new/4,
+         new/3,
          address/1, address/2,
          owner_address/1, owner_address/2,
          stake/1, stake/2,
-         description/1, description/2,
          last_heartbeat/1, last_heartbeat/2,
          status/1, status/2,
          nonce/1, nonce/2,
@@ -32,7 +31,6 @@
          address :: libp2p_crypto:pubkey_bin(),
          owner_address :: libp2p_crypto:pubkey_bin(),
          stake = 0 :: non_neg_integer(),
-         description = <<>> :: string(),
          heartbeat = 1 :: pos_integer(),
          nonce = 1 :: pos_integer(),
          version = 1 :: pos_integer(),
@@ -45,14 +43,12 @@
 
 -spec new(Address :: libp2p_crypto:pubkey_bin(),
           OwnerAddress :: libp2p_crypto:pubkey_bin(),
-          Description :: string(),
           Stake :: non_neg_integer()) ->
           validator().
-new(Address, OwnerAddress, Description, Stake) ->
+new(Address, OwnerAddress, Stake) ->
     #validator_v1{
        address = Address,
        owner_address = OwnerAddress,
-       description = Description,
        stake = Stake
       }.
 
@@ -91,15 +87,6 @@ version(Validator) ->
             Validator :: validator()) -> validator().
 version(Version, Validator) ->
     Validator#validator_v1{version = Version}.
-
--spec description(Validator :: validator()) -> string().
-description(Validator) ->
-    Validator#validator_v1.description.
-
--spec description(Description :: string(),
-                  Validator :: validator()) -> validator().
-description(Description, Validator) ->
-    Validator#validator_v1{description = Description}.
 
 -spec last_heartbeat(Validator :: validator()) -> non_neg_integer().
 last_heartbeat(Validator) ->

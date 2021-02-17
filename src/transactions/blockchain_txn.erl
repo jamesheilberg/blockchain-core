@@ -40,7 +40,6 @@
              | blockchain_txn_state_channel_close_v1:txn_state_channel_close()
              | blockchain_txn_gen_validator_v1:txn_gen_validator()
              | blockchain_txn_stake_validator_v1:txn_stake_validator()
-             | blockchain_txn_change_validator_description_v1:txn_change_validator_description()
              | blockchain_txn_transfer_validator_stake_v1:txn_transfer_validator_stake()
              | blockchain_txn_unstake_validator_v1:txn_unstake_validator()
              | blockchain_txn_unstake_validator_v1:txn_validator_heartbeat().
@@ -122,10 +121,9 @@
     {blockchain_txn_transfer_hotspot_v1, 26},
     {blockchain_txn_gen_validator_v1, 27},
     {blockchain_txn_stake_validator_v1, 28},
-    {blockchain_txn_change_validator_description_v1, 29},
-    {blockchain_txn_transfer_validator_stake_v1, 30},
-    {blockchain_txn_unstake_validator_v1, 31},
-    {blockchain_txn_validator_heartbeat_v1, 32}
+    {blockchain_txn_transfer_validator_stake_v1, 29},
+    {blockchain_txn_unstake_validator_v1, 30},
+    {blockchain_txn_validator_heartbeat_v1, 31}
 ]).
 
 block_delay() ->
@@ -209,8 +207,6 @@ wrap_txn(#blockchain_txn_gen_validator_v1_pb{}=Txn) ->
     #blockchain_txn_pb{txn={gen_validator, Txn}};
 wrap_txn(#blockchain_txn_stake_validator_v1_pb{}=Txn) ->
     #blockchain_txn_pb{txn={stake_validator, Txn}};
-wrap_txn(#blockchain_txn_change_validator_description_v1_pb{}=Txn) ->
-    #blockchain_txn_pb{txn={change_description, Txn}};
 wrap_txn(#blockchain_txn_transfer_validator_stake_v1_pb{}=Txn) ->
     #blockchain_txn_pb{txn={transfer_val_stake, Txn}};
 wrap_txn(#blockchain_txn_unstake_validator_v1_pb{}=Txn) ->
@@ -610,8 +606,6 @@ type(#blockchain_txn_stake_validator_v1_pb{}) ->
      blockchain_txn_stake_validator_v1;
 type(#blockchain_txn_unstake_validator_v1_pb{}) ->
     blockchain_txn_unstake_validator_v1;
-type(#blockchain_txn_change_validator_description_v1_pb{}) ->
-    blockchain_txn_change_validator_description_v1;
 type(#blockchain_txn_transfer_validator_stake_v1_pb{}) ->
     blockchain_txn_transfer_validator_stake_v1;
 type(#blockchain_txn_validator_heartbeat_v1_pb{}) ->

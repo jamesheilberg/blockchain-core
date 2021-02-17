@@ -84,7 +84,7 @@ init_chain(Balance, GenesisMembers, ExtraVars) when is_list(GenesisMembers), is_
     InitialConsensusTxn =
         case ExtraVars of
             #{election_version := V} when V >= 5 ->
-                [blockchain_txn_gen_validator_v1:new(Addr, Addr, 10000, Addr)
+                [blockchain_txn_gen_validator_v1:new(Addr, Addr, 10000)
                  || Addr <- Addresses];
             _ ->
                 [blockchain_txn_gen_gateway_v1:new(Addr, Addr, Loc, 0)

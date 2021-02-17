@@ -1905,13 +1905,13 @@ election_v5_test(Config) ->
     {ok, SeenPenalty} = blockchain_ledger_v1:config(?election_seen_penalty, Ledger),
 
     %% five should have taken both hits
-    FiveTarget = max(0.001,
+    FiveTarget = max(3.0,
                      normalize_float(element(2, lists:nth(5, OldGroupVals)) -
                                          normalize_float((BlockCt * BBAPenalty + BlockCt * SeenPenalty)))),
     ?assertEqual(FiveTarget, FiveScore),
 
     %% six should have taken only the BBA hit
-    SixTarget = max(0.001,
+    SixTarget = max(1.5,
                     normalize_float(element(2, lists:nth(6, OldGroupVals))
                                     - (BlockCt * BBAPenalty))),
     ?assertEqual(SixTarget, SixScore),
