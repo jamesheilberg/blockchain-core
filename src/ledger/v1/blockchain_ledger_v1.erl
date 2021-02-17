@@ -3651,6 +3651,7 @@ staked_hnt(Ledger) ->
       0
      ).
 
+-spec cooldown_hnt(Ledger :: ledger()) -> ok | {error, any()}.
 cooldown_hnt(Ledger) ->
     cache_fold(
       Ledger,
