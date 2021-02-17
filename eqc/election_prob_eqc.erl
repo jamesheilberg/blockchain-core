@@ -12,7 +12,7 @@
 -export([prop_election_prob_check/0]).
 
 prop_election_prob_check() ->
-    ?FORALL({Iterations, Electors}, {gen_iterations(), gen_electors()},
+    ?FORALL({Iterations, Electors}, {gen_iterations(), noshrink(gen_electors())},
             begin
                 {ToSelect, Candidates} = Electors,
 
@@ -25,17 +25,38 @@ prop_election_prob_check() ->
                                       #{},
                                       lists:seq(1, Iterations)),
 
+                ProbSum = lists:sum([Prob || {_, Prob} <- Candidates]),
+
                 Expectations = lists:foldl(fun({Candidate, Prob}, Acc) ->
-                                                   maps:put(Candidate, round(Prob * Iterations), Acc)
+                                                   maps:put(Candidate,
+                                                            round((Prob/ProbSum) * ToSelect * Iterations),
+                                                            Acc)
                                            end, #{}, Candidates),
-
-                CheckCounter = Counter == Expectations,
-
+                Results =
+                    maps:map(
+                      fun(Actor, Times) ->
+                              Exp = maps:get(Actor, Expectations),
+                              Diff = abs(Times - Exp),
+                              Diff / Exp
+                      end,
+                      Counter),
+                CheckCounter =
+                    maps:fold(
+                      fun(_, N, true) when N >= 0.1 ->
+                              false;
+                         (_, _, true) ->
+                              true;
+                         (_, _, false) ->
+                              false
+                      end,
+                      true,
+                      Results),
                 ?WHENFAIL(begin
                               io:format("Iterations: ~p~n", [Iterations]),
                               io:format("Electors: ~p~n", [Electors]),
                               io:format("Counter: ~p~n", [Counter]),
-                              io:format("Expectations: ~p~n", [Expectations])
+                              io:format("Expectations: ~p~n", [Expectations]),
+                              io:format("Results: ~p~n", [Results])
                           end,
                           noshrink(conjunction(
                                      [{verify_population_exists, length(Candidates) > 0},
@@ -47,7 +68,7 @@ prop_election_prob_check() ->
 
 gen_iterations() ->
     %% number of iterations to run
-    elements([10000, 20000, 100000]).
+    elements([20000, 40000, 100000]).
 
 gen_candidates() ->
     %% Generate some candidates with associated probabilities
