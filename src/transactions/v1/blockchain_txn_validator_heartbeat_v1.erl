@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == Blockchain Transaction Stake Validator ==
+%% == Blockchain Transaction Validator Heartbeat ==
 %% @end
 %%%-------------------------------------------------------------------
 -module(blockchain_txn_validator_heartbeat_v1).
