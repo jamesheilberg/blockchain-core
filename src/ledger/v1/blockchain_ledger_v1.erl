@@ -3526,7 +3526,7 @@ activate_validator(Address, Ledger) ->
             Nonce = blockchain_ledger_validator_v1:nonce(Val),
             {ok, CooldownStake} = cooldown_stake(Val, Ledger),
 
-            %% set status to unstaked
+            %% set status to staked
             Val1 = blockchain_ledger_validator_v1:status(staked, Val),
             %% increment the nonce
             Val2 = blockchain_ledger_validator_v1:nonce(Nonce + 1, Val1),
