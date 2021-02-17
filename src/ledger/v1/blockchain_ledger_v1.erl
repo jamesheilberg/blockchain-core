@@ -3461,7 +3461,7 @@ bootstrap_gw_denorm(Ledger) ->
                     OwnerAddress :: libp2p_crypto:pubkey_bin(),
                     Stake :: pos_integer(),
                     Description :: string(),
-                    Ledger :: ledger()) -> ok | {error, gateway_already_active}.
+                    Ledger :: ledger()) -> ok | {error, validator_already_added}.
 add_validator(Address,
               OwnerAddr,
               Stake,
