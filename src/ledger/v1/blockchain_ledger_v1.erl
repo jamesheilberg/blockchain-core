@@ -3538,6 +3538,7 @@ activate_validator(Address, Ledger) ->
         Error -> Error
     end.
 
+-spec delay_stake(Owner :: libp2p_crypto:pubkey_bin(), Validator: libp2p_crypto:pubkey_bin(), Stake :: non_neg_integer(), Ledger :: ledger()) -> ok | {error, any()}.
 delay_stake(Owner, Validator, Stake, Ledger) ->
     DefaultCF = default_cf(Ledger),
     {ok, Height} = current_height(Ledger),
