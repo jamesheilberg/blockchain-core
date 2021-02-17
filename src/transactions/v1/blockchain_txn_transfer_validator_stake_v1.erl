@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %% @doc
-%% == Blockchain Transaction Stake Validator ==
+%% == Blockchain Transaction Transfer Validator Stake ==
 %% @end
 %%%-------------------------------------------------------------------
 -module(blockchain_txn_transfer_validator_stake_v1).
