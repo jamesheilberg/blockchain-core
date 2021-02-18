@@ -164,6 +164,11 @@ is_valid(Txn, Chain) ->
                     false -> throw({wrong_txn_fee, {ExpectedTxnFee, Fee}});
                     true -> ok
                 end,
+                %% make sure that no one is re-using miner keys
+                case blockchain_ledger_v1:find_gateway_info(Validator, Ledger) of
+                    {ok, _} -> throw(reused_miner_key);
+                    {error, not_found} -> ok
+                end,
                 %% make sure that this validator doesn't already exist
                 case blockchain_ledger_v1:get_validator(Validator, Ledger) of
                     {ok, Val} ->
@@ -173,7 +178,7 @@ is_valid(Txn, Chain) ->
                                 throw(already_exists);
                             N when N =:= (ValNonce + 1) ->
                                 %% check that we have adequate stake in cooldown to restore
-                                {ok, CooldownStake} = blockchain_ledger_v1:cooldown_stake(Val, Ledger),
+                                {ok, CooldownStake} = blockchain_ledger_v1:get_cooldown_stake(Val, Ledger),
                                 case CooldownStake >= MinStake of
                                     true -> ok;
                                     false -> throw({not_enough_cooldown, cool,

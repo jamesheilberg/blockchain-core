@@ -642,19 +642,20 @@ val_dedup(OldGroup0, Validators0, Ledger) ->
 
     maps:fold(
       fun(Addr, Val = #val_v1{heartbeat = Last}, {Old, Candidates} = Acc) ->
-              Missing = (Height - Last) > (HBInterval + HBGrace),
+              Offline = (Height - Last) > (HBInterval + HBGrace),
               case lists:member(Addr, OldGroup0) of
                   true ->
                       OldGw =
-                          case Missing of
+                          case Offline of
                               true ->
-                                  Val#val_v1{prob = 0.001};
+                                  %% try and make sure offline nodes are selected
+                                  Val#val_v1{prob = 100};
                               _ ->
                                   Val
                           end,
                       {[OldGw | Old], Candidates};
                   _ ->
-                      case Missing of
+                      case Offline of
                           %% don't bother to add to the candidate list
                           true ->
                               Acc;

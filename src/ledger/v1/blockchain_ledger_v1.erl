@@ -139,13 +139,13 @@
     deactivate_validator/2,
     update_validator/3,
 
-    delay_stake/4,
-    cancel_delay_stake/2,
-    cooldown_stake/2,
+    cooldown_stake/4,
+    cancel_cooldown_stake/2,
+    get_cooldown_stake/2,
 
-    circulating_hnt/1,
-    staked_hnt/1,
-    cooldown_hnt/1,
+    query_circulating_hnt/1,
+    query_staked_hnt/1,
+    query_cooldown_hnt/1,
 
     %% snapshot save/restore stuff
     snapshot_vars/1,
@@ -774,8 +774,8 @@ process_delayed_actions(Block, Ledger, Chain) ->
             {ok, HE} ->
                 binary_to_term(HE);
             not_found ->
-                []
-            %% just gonna function clause for now
+                [];
+            {error, Reason} -> error(Reason)
         end,
     lists:foreach(
       fun({Owner, Validator, Stake}) ->
@@ -3511,7 +3511,7 @@ deactivate_validator(Address, Ledger) ->
             %% 0 the stake
             Val3 = blockchain_ledger_validator_v1:stake(0, Val2),
             %% put the stake HNT into cooldown
-            ok = delay_stake(Owner, Address, Stake, Ledger),
+            ok = cooldown_stake(Owner, Address, Stake, Ledger),
             update_validator(Address, Val3, Ledger);
         Error -> Error
     end.
@@ -3522,25 +3522,25 @@ activate_validator(Address, Ledger) ->
     case get_validator(Address, Ledger) of
         {ok, Val} ->
             Nonce = blockchain_ledger_validator_v1:nonce(Val),
-            {ok, CooldownStake} = cooldown_stake(Val, Ledger),
+            {ok, CooldownStake} = get_cooldown_stake(Val, Ledger),
 
             %% set status to staked
             Val1 = blockchain_ledger_validator_v1:status(staked, Val),
             %% increment the nonce
             Val2 = blockchain_ledger_validator_v1:nonce(Nonce + 1, Val1),
-            %% 0 the stake
+            %% reset the stake
             Val3 = blockchain_ledger_validator_v1:stake(CooldownStake, Val2),
-            %% put the stake HNT into cooldown
-            ok = cancel_delay_stake(Val3, Ledger),
+            %% pull the stake HNT out of cooldown
+            ok = cancel_cooldown_stake(Val3, Ledger),
             update_validator(Address, Val3, Ledger);
         Error -> Error
     end.
 
--spec delay_stake(Owner :: libp2p_crypto:pubkey_bin(),
-                  Validator :: libp2p_crypto:pubkey_bin(),
-                  Stake :: non_neg_integer(), Ledger :: ledger()) ->
+-spec cooldown_stake(Owner :: libp2p_crypto:pubkey_bin(),
+                     Validator :: libp2p_crypto:pubkey_bin(),
+                     Stake :: non_neg_integer(), Ledger :: ledger()) ->
           ok | {error, any()}.
-delay_stake(Owner, Validator, Stake, Ledger) ->
+cooldown_stake(Owner, Validator, Stake, Ledger) ->
     DefaultCF = default_cf(Ledger),
     {ok, Height} = current_height(Ledger),
     {ok, Cooldown} = config(?stake_withdrawl_cooldown, Ledger),
@@ -3572,7 +3572,7 @@ delay_stake(Owner, Validator, Stake, Ledger) ->
     cache_put(Ledger, DefaultCF, cd_block_name(TargetBlock),
               term_to_binary(HeightEntry1)).
 
-cancel_delay_stake(Val, Ledger) ->
+cancel_cooldown_stake(Val, Ledger) ->
     Address = blockchain_ledger_validator_v1:address(Val),
     Owner = blockchain_ledger_validator_v1:owner_address(Val),
 
@@ -3609,7 +3609,7 @@ cancel_delay_stake(Val, Ledger) ->
         Err -> Err                
     end.
 
-cooldown_stake(Val, Ledger) ->
+get_cooldown_stake(Val, Ledger) ->
     Address = blockchain_ledger_validator_v1:address(Val),
     Owner = blockchain_ledger_validator_v1:owner_address(Val),
 
@@ -3630,7 +3630,8 @@ cooldown_stake(Val, Ledger) ->
         Err -> Err                
     end.
 
-circulating_hnt(Ledger) ->
+-spec query_circulating_hnt(Ledger :: ledger()) -> non_neg_integer().
+query_circulating_hnt(Ledger) ->
     cache_fold(
       Ledger,
       entries_cf(Ledger),
@@ -3641,7 +3642,8 @@ circulating_hnt(Ledger) ->
       0
      ).    
 
-staked_hnt(Ledger) ->
+-spec query_staked_hnt(Ledger :: ledger()) -> non_neg_integer().
+query_staked_hnt(Ledger) ->
     cache_fold(
       Ledger,
       validators_cf(Ledger),
@@ -3652,8 +3654,8 @@ staked_hnt(Ledger) ->
       0
      ).
 
--spec cooldown_hnt(Ledger :: ledger()) -> ok | {error, any()}.
-cooldown_hnt(Ledger) ->
+-spec query_cooldown_hnt(Ledger :: ledger()) -> non_neg_integer().
+query_cooldown_hnt(Ledger) ->
     cache_fold(
       Ledger,
       default_cf(Ledger),
@@ -3723,6 +3725,7 @@ subnet_lookup(_, _, _) ->
 %% extract and load section for snapshots.  note that for determinism
 %% reasons, we need to not use maps, but sorted lists
 
+-spec snapshot_vars(ledger()) -> [{binary(), binary()}].
 snapshot_vars(Ledger) ->
     CF = default_cf(Ledger),
     lists:sort(
@@ -3740,6 +3743,7 @@ load_vars(Vars, Ledger) ->
     vars(maps:from_list(Vars), [], Ledger),
     ok.
 
+-spec snapshot_delayed_vars(ledger()) -> [{binary(), binary()}].
 snapshot_delayed_vars(Ledger) ->
     CF = default_cf(Ledger),
     {ok, Height} = current_height(Ledger),
@@ -3787,6 +3791,7 @@ load_delayed_vars(DVars, Ledger) ->
       end, maps:from_list(DVars)),
     ok.
 
+-spec snapshot_delayed_hnt(ledger()) -> [{binary(), binary()}].
 snapshot_delayed_hnt(Ledger) ->
     CF = default_cf(Ledger),
     %% grab everything related to looking up HNT during cooldown
@@ -3815,6 +3820,7 @@ load_delayed_hnt(DHNT, Ledger) ->
     CF = default_cf(Ledger),
     load_raw(DHNT, CF, Ledger).
 
+-spec snapshot_threshold_txns(ledger()) -> [{binary(), binary()}].
 snapshot_threshold_txns(Ledger) ->
     CF = default_cf(Ledger),
     lists:sort(scan_threshold_txns(Ledger, CF)).
@@ -3823,6 +3829,7 @@ load_threshold_txns(Txns, Ledger) ->
     lists:map(fun(T) -> save_threshold_txn(T, Ledger) end, Txns),
     ok.
 
+-spec snapshot_pocs(ledger()) -> [{binary(), binary()}].
 snapshot_pocs(Ledger) ->
     PoCsCF = pocs_cf(Ledger),
     lists:sort(
@@ -3846,6 +3853,7 @@ load_pocs(PoCs, Ledger) ->
       maps:from_list(PoCs)),
     ok.
 
+-spec snapshot_raw(reference(), ledger()) -> [{binary(), binary()}].
 snapshot_raw(CF, Ledger) ->
     %% we can just reverse this since rocks folds are lexicographic
     lists:reverse(
@@ -3866,6 +3874,7 @@ load_raw(List, CF, Ledger) ->
       List),
     ok.
 
+-spec snapshot_raw_pocs(ledger()) -> [{binary(), binary()}].
 snapshot_raw_pocs(Ledger) ->
     PoCsCF = pocs_cf(Ledger),
     snapshot_raw(PoCsCF, Ledger).
@@ -3874,6 +3883,7 @@ load_raw_pocs(PoCs, Ledger) ->
     PoCsCF = pocs_cf(Ledger),
     load_raw(PoCs, PoCsCF, Ledger).
 
+-spec snapshot_accounts(ledger()) -> [{binary(), binary()}].
 snapshot_accounts(Ledger) ->
     lists:sort(maps:to_list(entries(Ledger))).
 
@@ -3887,6 +3897,7 @@ load_accounts(Accounts, Ledger) ->
       maps:from_list(Accounts)),
     ok.
 
+-spec snapshot_raw_accounts(ledger()) -> [{binary(), binary()}].
 snapshot_raw_accounts(Ledger) ->
     EntriesCF = entries_cf(Ledger),
     snapshot_raw(EntriesCF, Ledger).
@@ -3895,6 +3906,7 @@ load_raw_accounts(Accounts, Ledger) ->
     EntriesCF = entries_cf(Ledger),
     load_raw(Accounts, EntriesCF, Ledger).
 
+-spec snapshot_dc_accounts(ledger()) -> [{binary(), binary()}].
 snapshot_dc_accounts(Ledger) ->
     lists:sort(maps:to_list(dc_entries(Ledger))).
 
@@ -3908,6 +3920,7 @@ load_dc_accounts(DCAccounts, Ledger) ->
       maps:from_list(DCAccounts)),
     ok.
 
+-spec snapshot_raw_dc_accounts(ledger()) -> [{binary(), binary()}].
 snapshot_raw_dc_accounts(Ledger) ->
     EntriesCF = dc_entries_cf(Ledger),
     snapshot_raw(EntriesCF, Ledger).
@@ -3916,6 +3929,7 @@ load_raw_dc_accounts(Accounts, Ledger) ->
     EntriesCF = dc_entries_cf(Ledger),
     load_raw(Accounts, EntriesCF, Ledger).
 
+-spec snapshot_security_accounts(ledger()) -> [{binary(), binary()}].
 snapshot_security_accounts(Ledger) ->
     lists:sort(maps:to_list(securities(Ledger))).
 
@@ -3929,6 +3943,7 @@ load_security_accounts(SecAccounts, Ledger) ->
       maps:from_list(SecAccounts)),
     ok.
 
+-spec snapshot_raw_security_accounts(ledger()) -> [{binary(), binary()}].
 snapshot_raw_security_accounts(Ledger) ->
     EntriesCF = securities_cf(Ledger),
     snapshot_raw(EntriesCF, Ledger).
@@ -3937,6 +3952,7 @@ load_raw_security_accounts(Accounts, Ledger) ->
     EntriesCF = securities_cf(Ledger),
     load_raw(Accounts, EntriesCF, Ledger).
 
+-spec snapshot_htlcs(ledger()) -> [{binary(), binary()}].
 snapshot_htlcs(Ledger) ->
     lists:sort(maps:to_list(htlcs(Ledger))).
 
@@ -3950,6 +3966,7 @@ load_htlcs(HTLCs, Ledger) ->
       maps:from_list(HTLCs)),
     ok.
 
+-spec snapshot_ouis(ledger()) -> [{binary(), binary()}].
 snapshot_ouis(Ledger) ->
     RoutingCF = routing_cf(Ledger),
     lists:sort(
@@ -3973,6 +3990,7 @@ load_ouis(OUIs, Ledger) ->
       maps:from_list(OUIs)),
     ok.
 
+-spec snapshot_subnets(ledger()) -> [{binary(), binary()}].
 snapshot_subnets(Ledger) ->
     SubnetsCF = subnets_cf(Ledger),
     lists:sort(
@@ -3994,6 +4012,7 @@ load_subnets(Subnets, Ledger) ->
       maps:from_list(Subnets)),
     ok.
 
+-spec snapshot_state_channels(ledger()) -> [{binary(), binary()}].
 snapshot_state_channels(Ledger) ->
     SCsCF = state_channels_cf(Ledger),
     lists:sort(
@@ -4020,6 +4039,7 @@ load_state_channels(SCs, Ledger) ->
       maps:from_list(SCs)),
     ok.
 
+-spec snapshot_hexes(ledger()) -> [{binary(), binary()}].
 snapshot_hexes(Ledger) ->
     case blockchain_ledger_v1:get_hexes(Ledger) of
         {ok, HexMap} ->
@@ -4050,11 +4070,13 @@ load_hexes(Hexes0, Ledger) ->
             ok
     end.
 
+-spec snapshot_h3dex(ledger()) -> [{binary(), binary()}].
 snapshot_h3dex(Ledger) ->
     lists:sort(
       maps:to_list(
         get_h3dex(Ledger))).
 
+-spec load_h3dex([{binary(), binary()}], ledger()) -> ok.
 load_h3dex(H3DexList, Ledger) ->
     set_h3dex(maps:from_list(H3DexList), Ledger).
 

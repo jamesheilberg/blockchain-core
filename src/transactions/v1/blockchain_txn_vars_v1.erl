@@ -564,14 +564,12 @@ check_members(Members, Target, Ledger) ->
                       case blockchain_ledger_v1:get_validator(M, Ledger) of
                           {ok, Val} ->
                               V = blockchain_ledger_validator_v1:version(Val),
-                              lager:info("val ~p target ~p vers ~p", [Val, Target, V]),
                               V >= Target;
-                          _Err -> lager:info("err ~p", [_Err]), false
+                          _Err -> false
                       end
               end,
               Members);
-        _N ->
-            lager:info("election version = ~p", [_N]),
+        _ ->
             lists:all(
               fun(M) ->
                       case blockchain_ledger_v1:find_gateway_info(M, Ledger) of
