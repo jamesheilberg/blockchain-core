@@ -156,10 +156,15 @@ is_valid(Txn, Chain) ->
             {error, bad_validator_signature};
         {true, true} ->
             try
+                %% explicit activation gate on the stake threshold
+                MinStake =
+                    case blockchain:config(?validator_minimum_stake, Ledger) of
+                        {ok, Min} -> Min;
+                        _ -> throw(validators_not_enabled)
+                    end,
                 %% check fee
                 AreFeesEnabled = blockchain_ledger_v1:txn_fees_active(Ledger),
                 ExpectedTxnFee = calculate_fee(Txn, Chain),
-                {ok, MinStake} = blockchain:config(?validator_minimum_stake, Ledger),
                 case ExpectedTxnFee =< Fee orelse not AreFeesEnabled of
                     false -> throw({wrong_txn_fee, {ExpectedTxnFee, Fee}});
                     true -> ok
