@@ -1,4 +1,3 @@
-
 %% @doc
 %% == Blockchain Ledger ==
 %% @end
@@ -523,7 +522,7 @@ atom_to_cf(Atom, #ledger_v1{mode = Mode} = Ledger) ->
             htlcs -> SL#sub_ledger_v1.htlcs;
             pocs -> SL#sub_ledger_v1.pocs;
             securities -> SL#sub_ledger_v1.securities;
-            routing -> SL#sub_ledger_v1.routing; 
+            routing -> SL#sub_ledger_v1.routing;
             state_channels -> SL#sub_ledger_v1.state_channels;
             h3dex -> SL#sub_ledger_v1.h3dex;
             validators -> SL#sub_ledger_v1.validators
@@ -783,7 +782,7 @@ process_delayed_actions(Block, Ledger, Chain) ->
               %% cleanup owner entry
               {ok, OwnerEntry0} = cache_get(Ledger, DefaultCF, owner_name(Owner), []),
               OwnerEntry = binary_to_term(OwnerEntry0),
-              
+
               case lists:keydelete(Validator, 1, OwnerEntry) of
                   [] ->
                       cache_delete(Ledger, DefaultCF, owner_name(Owner));
@@ -3515,7 +3514,7 @@ deactivate_validator(Address, Ledger) ->
             update_validator(Address, Val3, Ledger);
         Error -> Error
     end.
-            
+
 -spec activate_validator(libp2p_crypto:pubkey_bin(), ledger()) ->
           ok | {error, any()}.
 activate_validator(Address, Ledger) ->
@@ -3556,7 +3555,6 @@ cooldown_stake(Owner, Validator, Stake, Ledger) ->
             %% just gonna function clause for now
         end,
     OwnerEntry1 = OwnerEntry ++ [{Validator, Stake, TargetBlock}],
-    lager:info("storing ~p", [OwnerEntry1]),
     cache_put(Ledger, DefaultCF, owner_name(Owner),
               term_to_binary(OwnerEntry1)),
     %% make an entry for the return with {owner, validator, stake} at height
@@ -3606,7 +3604,7 @@ cancel_cooldown_stake(Val, Ledger) ->
             end;
         not_found ->
             {error, not_found};
-        Err -> Err                
+        Err -> Err
     end.
 
 get_cooldown_stake(Val, Ledger) ->
@@ -3617,7 +3615,6 @@ get_cooldown_stake(Val, Ledger) ->
     case cache_get(Ledger, CF, owner_name(Owner), []) of
         {ok, OE} ->
             Entries = binary_to_term(OE),
-            lager:info("got ~p", [Entries]),
             case lists:filter(fun({A, _S, _T}) ->
                                       A == Address
                               end, Entries) of
@@ -3625,9 +3622,8 @@ get_cooldown_stake(Val, Ledger) ->
                 [{_Addr, Stake, _TargetBlock}] -> {ok, Stake}
             end;
         not_found ->
-            lager:info("got nada"),
             {ok, 0};
-        Err -> Err                
+        Err -> Err
     end.
 
 -spec query_circulating_hnt(Ledger :: ledger()) -> non_neg_integer().
@@ -3640,7 +3636,7 @@ query_circulating_hnt(Ledger) ->
               Acc + blockchain_ledger_entry_v1:balance(Ent)
       end,
       0
-     ).    
+     ).
 
 -spec query_staked_hnt(Ledger :: ledger()) -> non_neg_integer().
 query_staked_hnt(Ledger) ->

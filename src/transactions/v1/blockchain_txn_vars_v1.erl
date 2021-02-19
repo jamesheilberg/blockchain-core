@@ -527,36 +527,29 @@ maybe_absorb(Txn, Ledger, _Chain) ->
                     ok = blockchain_ledger_v1:delay_vars(Effective, Txn, Ledger),
                     true;
                 V ->
-                    lager:info("v = ~p", [V]),
                     {ok, Members} = blockchain_ledger_v1:consensus_members(Ledger),
                     %% TODO: combine these checks for efficiency?
                     case check_members(Members, V, Ledger) of
                         true ->
                             {ok, Threshold} = blockchain:config(?predicate_threshold, Ledger),
                             Versions = blockchain_ledger_v1:cg_versions(Ledger),
-                            lager:info("threshold ~p version ~p", [Threshold, Versions]),
                             case sum_higher(V, Versions) of
                                 Pct when Pct >= Threshold andalso Delay =:= 0 ->
-                                    lager:info("succeed = ~p", [Pct]),
                                     delayed_absorb(Txn, Ledger),
                                     true;
                                 Pct when Pct >= Threshold ->
-                                    lager:info("succeed delay = ~p", [Pct]),
                                     ok = blockchain_ledger_v1:delay_vars(Effective, Txn, Ledger),
                                     true;
                                 _Pct ->
-                                    lager:info("fail = ~p", [_Pct]),
                                     false
                             end;
                         _ ->
-                            lager:info("bad members"),
                             false
                     end
             end
     end.
 
 check_members(Members, Target, Ledger) ->
-    lager:info("members ~p", [Members]),
     case blockchain_ledger_v1:config(?election_version, Ledger) of
         {ok, N} when N >= 5 ->
             lists:all(

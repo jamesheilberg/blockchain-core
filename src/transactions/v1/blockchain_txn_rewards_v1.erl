@@ -141,10 +141,8 @@ absorb(Txn, Chain) ->
         #{},
         Rewards
     ),
-    lager:info("rewards ~p", [AccRewards]),
     maps:fold(
         fun(Account, Amount, _) ->
-                lager:info("reward ~p ~p", [libp2p_crypto:bin_to_b58(Account), Amount]),
                 blockchain_ledger_v1:credit_account(Account, Amount, Ledger)
         end,
         ok,
